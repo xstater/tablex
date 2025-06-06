@@ -1,0 +1,10 @@
+{
+    "cSpell.words": [
+        "tablex"
+    ],
+    "rust-analyzer.procMacro.ignored": {
+        "tablex-test": [
+            "Table"
+        ]
+    }
+}
