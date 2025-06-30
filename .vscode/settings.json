@@ -1,5 +1,7 @@
 {
     "cSpell.words": [
+        "AUTOINCREMENT",
+        "rusqlite",
         "tablex"
     ],
     "rust-analyzer.procMacro.ignored": {

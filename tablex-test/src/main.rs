@@ -1,21 +1,31 @@
-use tablex::Table;
+use tablex::{Column, Table};
 
 #[derive(Debug, Table)]
 #[table(name = "user_info")]
 struct UserInfo {
+    #[column]
+    id: u32,
     #[column(override_name = "user_name", data_type = "TEXT")]
     name: String,
     #[column]
     age: u32,
 }
 
-fn main() {
-    println!("Table name: {}", UserInfo::name());
-    println!("Columns: {:?}", UserInfo::columns());
+#[derive(Debug, Table)]
+struct Transaction {
+    #[column(reference_table = UserInfo, reference_key = id)]
+    from_id: u32,
+    #[column(reference_table = UserInfo, reference_key = id)]
+    to_id: u32,
+    #[column]
+    amount: f64,
+}
 
-    let age_column = UserInfo::get_column("age").unwrap();
+fn main() {
+    let age_column = UserInfo::column_age();
 
     let mut user = UserInfo {
+        id: 1,
         name: "Alice".to_string(),
         age: 30,
     };
@@ -30,4 +40,8 @@ fn main() {
     }
 
     println!("User's new age: {}", user.age);
+
+    let reference = Transaction::column_from_id().reference.unwrap();
+
+    assert!(Column::ref_eq(reference, UserInfo::column_id()))
 }

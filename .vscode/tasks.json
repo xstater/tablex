@@ -1,0 +1,22 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Cargo Expand tablex-test",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "expand",
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/tablex-test",
+                "env": {
+                    "RUSTFLAGS": "-Zmacro-backtrace"
+                }
+            },
+            "problemMatcher": [
+                "$rustc"
+            ]
+        }
+    ]
+}
