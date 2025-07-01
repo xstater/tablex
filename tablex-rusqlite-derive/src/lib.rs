@@ -168,12 +168,19 @@ pub fn derive(input: TokenStream) -> TokenStream {
         .collect::<Vec<_>>();
 
     let output = quote! {
-        impl ::tablex::Table for #struct_ident{
-            fn table_info() -> &'static ::tablex::TableInfo {
+        impl ::tablex_rusqlite::tablex::Table for #struct_ident{
+            type ExtraTableInfo = ();
+
+            type ExtraColumnInfo = ::tablex_rusqlite::meta::SqlExtraColumnInfo;
+
+            fn table_info() -> &'static ::tablex_rusqlite::tablex::TableInfo<Self::ExtraTableInfo, Self::ExtraColumnInfo> {
                 #struct_ident :: const_table_info()
             }
 
-            fn value_ref<T: 'static>(&self, column: &::tablex::Column) -> Option<&T> {
+            fn value_ref<T: 'static>(
+                &self,
+                column: &::tablex_rusqlite::tablex::Column<Self::ExtraTableInfo, Self::ExtraColumnInfo>,
+            ) -> Option<&T> {
                 let type_id_t = ::std::any::TypeId::of::<T>();
                 #(
                     #column_refs
@@ -181,7 +188,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 None
             }
 
-            fn value_mut<T: 'static>(&mut self, column: &::tablex::Column) -> Option<&mut T> {
+            fn value_mut<T: 'static>(
+                &mut self,
+                column: &::tablex_rusqlite::tablex::Column<Self::ExtraTableInfo, Self::ExtraColumnInfo>,
+            ) -> Option<&mut T> {
                 let type_id_t = ::std::any::TypeId::of::<T>();
                 #(
                     #column_muts
@@ -239,18 +249,20 @@ fn gen_column_def_fns(struct_ident: &Ident, column_fields: &[ColumnInfo]) -> Vec
             };
 
             quote! {
-                pub const fn #fn_name() -> &'static ::tablex::Column {
-                    static COLUMN: ::tablex::Column = ::tablex::Column {
+                pub const fn #fn_name() -> &'static ::tablex_rusqlite::meta::SqlColumnInfo {
+                    static COLUMN: ::tablex_rusqlite::meta::SqlColumnInfo = ::tablex_rusqlite::meta::SqlColumnInfo {
                         table: #struct_ident :: const_table_info(),
                         column_name: stringify!(#column_name),
                         field_name: stringify!(#field_name),
                         offset: std::mem::offset_of!(#struct_ident, #field_name),
                         size: std::mem::size_of::<#ty>(),
-                        data_type: #data_type,
-                        is_primary: #is_primary_key,
-                        is_unique: false,
-                        is_auto_increment: false,
-                        reference: #reference,
+                        extra: ::tablex_rusqlite::meta::SqlExtraColumnInfo {
+                            data_type: #data_type,
+                            is_primary: #is_primary_key,
+                            is_unique: false,
+                            is_auto_increment: false,
+                            reference: #reference,
+                        }
                     };
                     &COLUMN
                 }
@@ -275,13 +287,14 @@ fn gen_table_info_def(struct_ident: &Ident, table_ident: &Ident, column_fields: 
     let column_count = columns.len();
     
     quote! {
-        pub const fn const_table_info() -> &'static ::tablex::TableInfo {
-            static COLUMNS: [&'static ::tablex::Column; #column_count] = [
+        pub const fn const_table_info() -> &'static ::tablex_rusqlite::meta::SqlTableInfo {
+            static COLUMNS: [&'static ::tablex_rusqlite::meta::SqlColumnInfo; #column_count] = [
                 #(#columns),*
             ];
-            static TABLE_INFO : ::tablex::TableInfo = ::tablex::TableInfo {
+            static TABLE_INFO : ::tablex_rusqlite::meta::SqlTableInfo = ::tablex_rusqlite::meta::SqlTableInfo {
                 table_name: stringify!(#table_ident),
                 columns: &COLUMNS,
+                extra: ()
             };
 
             &TABLE_INFO

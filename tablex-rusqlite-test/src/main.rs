@@ -1,4 +1,6 @@
-use tablex::{Column, Table};
+use tablex_rusqlite::{tablex::Table, Table};
+
+// mod generated;
 
 #[derive(Debug, Table)]
 #[table(name = "user_info")]
@@ -30,6 +32,7 @@ fn main() {
         age: 30,
     };
 
+
     let age = *user.value_ref::<u32>(age_column).unwrap();
 
     println!("User's age: {}", age);
@@ -41,7 +44,7 @@ fn main() {
 
     println!("User's new age: {}", user.age);
 
-    let reference = Transaction::column_from_id().reference.unwrap();
+    let reference = Transaction::column_from_id().extra.reference.unwrap();
 
-    assert!(Column::ref_eq(reference, UserInfo::column_id()))
+    assert_eq!(reference as *const _, UserInfo::column_id() as *const _)
 }

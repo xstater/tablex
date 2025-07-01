@@ -2,7 +2,7 @@
 resolver = "3"
 members = [
     "tablex",
-    "tablex-derive",
-    "tablex-test",
-    "tablex-rusqlite"
+    "tablex-rusqlite",
+    "tablex-rusqlite-derive",
+    "tablex-rusqlite-test"
 ]
