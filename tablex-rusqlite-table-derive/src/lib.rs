@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use darling::{FromDeriveInput, FromField};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Ident, ItemStruct, Type};
+use syn::{parse_macro_input, Ident, ItemStruct, Path, Type};
 
 #[derive(Default, FromDeriveInput)]
 #[darling(default, attributes(table), supports(struct_named))]
@@ -15,18 +15,21 @@ struct TableOptions {
 #[derive(Default, FromField)]
 #[darling(attributes(column))]
 struct ColumnOptions {
-    /// 覆盖字段名的列名
+    /// 列名， 不提供时使用字段名
     #[darling(default)]
-    override_name: Option<String>,
-    /// 列数据类型 (对应数据库中的类型`VARCHAR(255)` `TEXT` `INTEGER`等)
-    #[darling(default)]
-    data_type: Option<String>,
+    name: Option<String>,
     /// 是否为主键
-    #[darling(default)]
+    #[darling(default, rename="primary")]
     is_primary: bool,
+    /// 是否自增
+    #[darling(default, rename="auto_increment")]
+    is_auto_increment: bool,
+    /// 是否唯一
+    #[darling(default, rename="unique")]
+    is_unique: bool,
     // 引用表 (引用到另一张表的某个字段)
     #[darling(default)]
-    reference_table: Option<Ident>,
+    reference_table: Option<Path>,
     // 引用键 (引用到另一张表的某个字段)
     #[darling(default)]
     reference_key: Option<Ident>,
@@ -35,7 +38,7 @@ struct ColumnOptions {
 /// 列信息 (struct中的字段信息)
 struct ColumnInfo {
     /// 字段名 
-    name: String,
+    field_name: String,
     /// 类型信息
     ty: Type,
     /// 列配置
@@ -45,15 +48,15 @@ struct ColumnInfo {
 impl ColumnInfo {
     /// 获取列名
     fn get_column_name(&self) -> &str {
-        self.options.override_name
+        self.options.name
             .as_ref()
-            .unwrap_or(&self.name)
+            .unwrap_or(&self.field_name)
     }
 
     /// 获取列函数名
     /// 以字段名为准 格式为 `column_字段名`
     fn get_column_fn_name(&self) -> Ident {
-        build_column_fn_name(&self.name)
+        build_column_fn_name(&self.field_name)
     }
 }
 
@@ -62,7 +65,7 @@ fn build_column_fn_name<S: AsRef<str>>(field_name: S) -> Ident {
 }
 
 #[proc_macro_derive(Table, attributes(table, column))]
-pub fn derive(input: TokenStream) -> TokenStream {
+pub fn derive_table(input: TokenStream) -> TokenStream {
     let item_struct @ ItemStruct { .. } = parse_macro_input!(input);
 
     let struct_ident = item_struct.ident.clone();
@@ -99,7 +102,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
             let column_info = ColumnInfo {
                 // 不能提供未命名字段
-                name: field.ident.as_ref().map(|ident| ident.to_string()).expect("Field must be named"),
+                field_name: field.ident
+                    .as_ref()
+                    .map(|ident| ident.to_string())
+                    .expect("Field must be named"),
                 ty: field.ty.clone(),
                 options: column_options,
             };
@@ -131,7 +137,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let column_refs = column_fields
         .iter()
         .map(|info| {
-            let field_name = format_ident!("{}", info.name);
+            let field_name = format_ident!("{}", info.field_name);
             let ty = info.ty.clone();
 
             // 检查字段名和类型是否一致
@@ -151,7 +157,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let column_muts = column_fields
         .iter()
         .map(|info| {
-            let field_name = format_ident!("{}", info.name);
+            let field_name = format_ident!("{}", info.field_name);
             let ty = info.ty.clone();
 
             // 检查字段名和类型是否一致
@@ -173,13 +179,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
             type ExtraColumnInfo = ::tablex_rusqlite::meta::SqlExtraColumnInfo;
 
-            fn table_info() -> &'static ::tablex_rusqlite::tablex::TableInfo<Self::ExtraTableInfo, Self::ExtraColumnInfo> {
-                #struct_ident :: const_table_info()
-            }
+            #table_info_def
 
             fn value_ref<T: 'static>(
                 &self,
-                column: &::tablex_rusqlite::tablex::Column<Self::ExtraTableInfo, Self::ExtraColumnInfo>,
+                column: &::tablex_rusqlite::tablex::Column<Self::ExtraColumnInfo>,
             ) -> Option<&T> {
                 let type_id_t = ::std::any::TypeId::of::<T>();
                 #(
@@ -190,7 +194,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
             fn value_mut<T: 'static>(
                 &mut self,
-                column: &::tablex_rusqlite::tablex::Column<Self::ExtraTableInfo, Self::ExtraColumnInfo>,
+                column: &::tablex_rusqlite::tablex::Column<Self::ExtraColumnInfo>,
             ) -> Option<&mut T> {
                 let type_id_t = ::std::any::TypeId::of::<T>();
                 #(
@@ -201,15 +205,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
 
         impl #struct_ident {
-            #table_info_def
-
             #(
                 #column_def_fns
             )*
         }
     };
-
-    // panic!("{}", output);
 
     output.into()
 }
@@ -219,51 +219,53 @@ fn gen_column_def_fns(struct_ident: &Ident, column_fields: &[ColumnInfo]) -> Vec
     column_fields
         .iter()
         .map(|info| {
-            let field_name = format_ident!("{}", info.name);
+            let field_name = format_ident!("{}", info.field_name);
             let column_name = format_ident!("{}", info.get_column_name());
 
             let ty = info.ty.clone();
-            let is_primary_key = info.options.is_primary;
-            let data_type = match &info.options.data_type {
-                Some(data_type_str) => quote! {
-                    Some(#data_type_str)
-                },
-                None => quote! { None },
-            };
+            let is_primary = info.options.is_primary;
+            let is_auto_increment = info.options.is_auto_increment;
+            let is_unique = info.options.is_unique;
 
             let fn_name = info.get_column_fn_name();
 
             // 检查引用表和引用键必须同时存在或同时不存在
+            // 宏中无法检查不能引用自身 (引用自身会导致死循环)
             let reference = match (&info.options.reference_table, &info.options.reference_key) {
                 // 生成引用表和键的代码
-                (Some(table), Some(key)) => 
+                (Some(table_type), Some(key)) => 
                 {
                     let column_fn_name = build_column_fn_name(key.to_string());
                     quote!{
-                        Some(#table :: #column_fn_name())
+                        Some(::tablex_rusqlite::meta::Reference{
+                            table: #table_type :: table_info(),
+                            column: #table_type :: #column_fn_name()
+                        })
                     }
-                }
-                ,
+                },
                 (None, None) => quote! { None },
                 _ => panic!("Reference table and key must both be specified or both omitted"),                
             };
 
             quote! {
-                pub const fn #fn_name() -> &'static ::tablex_rusqlite::meta::SqlColumnInfo {
-                    static COLUMN: ::tablex_rusqlite::meta::SqlColumnInfo = ::tablex_rusqlite::meta::SqlColumnInfo {
-                        table: #struct_ident :: const_table_info(),
-                        column_name: stringify!(#column_name),
-                        field_name: stringify!(#field_name),
-                        offset: std::mem::offset_of!(#struct_ident, #field_name),
-                        size: std::mem::size_of::<#ty>(),
-                        extra: ::tablex_rusqlite::meta::SqlExtraColumnInfo {
-                            data_type: #data_type,
-                            is_primary: #is_primary_key,
-                            is_unique: false,
-                            is_auto_increment: false,
-                            reference: #reference,
+                pub fn #fn_name() -> &'static ::tablex_rusqlite::meta::SqlColumnInfo {
+                    static COLUMN: ::std::sync::LazyLock<::tablex_rusqlite::meta::SqlColumnInfo> = ::std::sync::LazyLock::new(
+                        || ::tablex_rusqlite::meta::SqlColumnInfo {
+                            column_name: stringify!(#column_name),
+                            field_name: stringify!(#field_name),
+                            offset: std::mem::offset_of!(#struct_ident, #field_name),
+                            size: std::mem::size_of::<#ty>(),
+                            extra: ::tablex_rusqlite::meta::SqlExtraColumnInfo {
+                                data_type: <#ty as ::tablex_rusqlite::SqlType>::type_name(),
+                                is_primary: #is_primary,
+                                is_unique: #is_unique,
+                                is_auto_increment: #is_auto_increment,
+                                is_not_null: !<#ty as ::tablex_rusqlite::SqlType>::is_nullable(),
+                                reference: #reference,
+                            }
                         }
-                    };
+                    );
+
                     &COLUMN
                 }
             }
@@ -287,17 +289,21 @@ fn gen_table_info_def(struct_ident: &Ident, table_ident: &Ident, column_fields: 
     let column_count = columns.len();
     
     quote! {
-        pub const fn const_table_info() -> &'static ::tablex_rusqlite::meta::SqlTableInfo {
-            static COLUMNS: [&'static ::tablex_rusqlite::meta::SqlColumnInfo; #column_count] = [
-                #(#columns),*
-            ];
-            static TABLE_INFO : ::tablex_rusqlite::meta::SqlTableInfo = ::tablex_rusqlite::meta::SqlTableInfo {
-                table_name: stringify!(#table_ident),
-                columns: &COLUMNS,
-                extra: ()
-            };
+        fn table_info() -> &'static ::tablex_rusqlite::tablex::TableInfo<Self::ExtraTableInfo, Self::ExtraColumnInfo> {
+            static COLUMNS: ::std::sync::LazyLock<[&'static ::tablex_rusqlite::meta::SqlColumnInfo; #column_count]> = 
+                ::std::sync::LazyLock::new( || [
+                    #(#columns),*
+                ]);
 
-            &TABLE_INFO
+            static TABLE_INFO : ::std::sync::LazyLock< ::tablex_rusqlite::meta::SqlTableInfo> = ::std::sync::LazyLock::new(||
+                ::tablex_rusqlite::meta::SqlTableInfo {
+                    table_name: stringify!(#table_ident),
+                    columns: &*COLUMNS,
+                    extra: ()
+                }
+            );
+
+            &*TABLE_INFO
         }
     }
 }

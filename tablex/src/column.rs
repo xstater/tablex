@@ -1,14 +1,9 @@
-use crate::TableInfo;
-
-
 /// The column information
 #[derive(Debug)]
-pub struct Column<ExtraTableInfo, ExtraColumnInfo>
+pub struct Column<ExtraColumnInfo>
 where 
-    ExtraTableInfo: 'static,
     ExtraColumnInfo: 'static,
 {
-    pub table: &'static TableInfo<ExtraTableInfo, ExtraColumnInfo>,
     /// The name of the column in the database table
     pub column_name: &'static str,
     /// The name of the corresponding field in the struct

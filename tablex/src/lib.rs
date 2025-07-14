@@ -15,11 +15,11 @@ pub trait Table {
     /// Get the reference of column field
     /// # details
     /// - T must be same as the field
-    fn value_ref<T: 'static>(&self, column: &Column<Self::ExtraTableInfo, Self::ExtraColumnInfo>) -> Option<&T>;
+    fn value_ref<T: 'static>(&self, column: &Column<Self::ExtraColumnInfo>) -> Option<&T>;
     /// Get the mutable reference of column field
     /// # details
     /// - T must be same as the field
-    fn value_mut<T: 'static>(&mut self, column: &Column<Self::ExtraTableInfo, Self::ExtraColumnInfo>) -> Option<&mut T>;
+    fn value_mut<T: 'static>(&mut self, column: &Column<Self::ExtraColumnInfo>) -> Option<&mut T>;
 }
 
 

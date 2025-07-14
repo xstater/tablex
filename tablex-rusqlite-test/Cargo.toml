@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 tablex-rusqlite = { path = "../tablex-rusqlite" }
+rusqlite = "0.37"

@@ -5,5 +5,7 @@ edition = "2024"
 
 [dependencies]
 tablex = { path = "../tablex" }
-tablex-rusqlite-derive = { path = "../tablex-rusqlite-derive" }
-rusqlite = "0.36"
+tablex-rusqlite-table-derive = { path = "../tablex-rusqlite-table-derive" }
+tablex-rusqlite-params-derive = { path = "../tablex-rusqlite-params-derive" }
+tablex-rusqlite-from-row-derive = { path = "../tablex-rusqlite-from-row-derive" }
+rusqlite = "0.37"

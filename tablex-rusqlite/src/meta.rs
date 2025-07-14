@@ -1,29 +1,37 @@
 use tablex::{Column, TableInfo};
 
-
 pub struct SqlExtraColumnInfo {
     /// The data type of the column, e.g., "TEXT", "INTEGER"
-    pub data_type: Option<&'static str>,
+    pub data_type: &'static str,
     /// Whether this column is a primary key
     pub is_primary: bool,
     /// Whether this column is auto-incrementing
     pub is_auto_increment: bool,
     /// Whether this column is unique
     pub is_unique: bool,
+    /// Whether this column is not null
+    pub is_not_null: bool,
     /// Optional reference to another table/column
-    pub reference: Option<&'static Column<(), Self>>,
+    pub reference: Option<Reference>,
 }
 
+
+pub struct Reference {
+    pub table: &'static SqlTableInfo,
+    pub column: &'static SqlColumnInfo,
+}
+
+
 pub type SqlTableInfo = TableInfo<(), SqlExtraColumnInfo>;
-pub type SqlColumnInfo = Column<(), SqlExtraColumnInfo>;
+pub type SqlColumnInfo = Column<SqlExtraColumnInfo>;
 
 #[cfg(test)]
 mod test {
+    use std::sync::LazyLock;
+
     use tablex::{Column, Table, TableInfo};
 
-    use crate::meta::{SqlColumnInfo, SqlExtraColumnInfo, SqlTableInfo};
-
-    
+    use crate::{meta::{Reference, SqlColumnInfo, SqlExtraColumnInfo, SqlTableInfo},Params};
 
     #[derive(Debug)]
     struct UserInfo {
@@ -57,7 +65,6 @@ mod test {
 
         pub const fn column_id() -> &'static SqlColumnInfo {
             static COLUMN: SqlColumnInfo = SqlColumnInfo {
-                table: UserInfo::const_table_info(),
                 column_name: "id",
                 field_name: "id",
                 offset: std::mem::offset_of!(UserInfo, id),
@@ -66,6 +73,7 @@ mod test {
                     data_type: "INTEGER",
                     is_primary: true,
                     is_unique: false,
+                    is_not_null: true,
                     is_auto_increment: false,
                     reference: None,
                 },
@@ -75,7 +83,6 @@ mod test {
 
         pub const fn column_user_name() -> &'static SqlColumnInfo {
             static COLUMN: SqlColumnInfo = SqlColumnInfo {
-                table: UserInfo::const_table_info(),
                 column_name: "user_name",
                 field_name: "name",
                 offset: std::mem::offset_of!(UserInfo, name),
@@ -85,6 +92,7 @@ mod test {
                     is_primary: false,
                     is_unique: false,
                     is_auto_increment: false,
+                    is_not_null: true,
                     reference: None,
                 },
             };
@@ -93,7 +101,6 @@ mod test {
 
         pub const fn column_age() -> &'static SqlColumnInfo {
             static COLUMN: SqlColumnInfo = SqlColumnInfo {
-                table: UserInfo::const_table_info(),
                 column_name: "age",
                 field_name: "age",
                 offset: std::mem::offset_of!(UserInfo, age),
@@ -103,6 +110,7 @@ mod test {
                     is_primary: false,
                     is_unique: false,
                     is_auto_increment: false,
+                    is_not_null: true,
                     reference: None,
                 },
             };
@@ -119,10 +127,7 @@ mod test {
             Self::const_table_info()
         }
 
-        fn value_ref<T: 'static>(
-            &self,
-            column: &Column<Self::ExtraTableInfo, Self::ExtraColumnInfo>,
-        ) -> Option<&T> {
+        fn value_ref<T: 'static>(&self, column: &Column<Self::ExtraColumnInfo>) -> Option<&T> {
             let type_id_t = std::any::TypeId::of::<T>();
             if column.field_name == "name" && type_id_t == std::any::TypeId::of::<String>() {
                 return Some(unsafe { &*(&self.name as *const _ as *const T) });
@@ -134,7 +139,7 @@ mod test {
 
         fn value_mut<T: 'static>(
             &mut self,
-            column: &Column<Self::ExtraTableInfo, Self::ExtraColumnInfo>,
+            column: &Column<Self::ExtraColumnInfo>,
         ) -> Option<&mut T> {
             let type_id_t = std::any::TypeId::of::<T>();
             if column.field_name == "name" && type_id_t == std::any::TypeId::of::<String>() {
@@ -146,23 +151,35 @@ mod test {
         }
     }
 
+    impl Params for UserInfo {
+        type BindIndex = &'static str;
+        
+        fn params(&self) -> impl Iterator<Item = (Self::BindIndex, &dyn rusqlite::ToSql)> {
+            [
+                (":id", &self.id as &dyn rusqlite::ToSql),
+                (":name", &self.name as &dyn rusqlite::ToSql),
+                (":age", &self.age as &dyn rusqlite::ToSql),
+            ]
+            .into_iter()
+        }
+    }
+
     impl Transaction {
-        pub const fn const_table_info() -> &'static SqlTableInfo {
-            static COLUMNS: [&SqlColumnInfo; 2] =
-                [Transaction::column_from_id(), Transaction::column_to_id()];
+        pub fn const_table_info() -> &'static SqlTableInfo {
+            static COLUMNS: LazyLock<[&'static SqlColumnInfo; 2]> =
+                LazyLock::new(|| [Transaction::column_from_id(), Transaction::column_to_id()]);
 
-            static TABLE_INFO: SqlTableInfo = SqlTableInfo {
+            static TABLE_INFO: LazyLock<SqlTableInfo> = LazyLock::new(|| SqlTableInfo {
                 table_name: "Transaction",
-                columns: &COLUMNS,
+                columns: &*COLUMNS,
                 extra: (),
-            };
+            });
 
-            &TABLE_INFO
+            &*TABLE_INFO
         }
 
-        pub const fn column_from_id() -> &'static SqlColumnInfo {
-            static COLUMN: SqlColumnInfo = SqlColumnInfo {
-                table: Transaction::const_table_info(),
+        pub fn column_from_id() -> &'static SqlColumnInfo {
+            static COLUMN: LazyLock<SqlColumnInfo> = LazyLock::new(|| SqlColumnInfo {
                 column_name: "from_id",
                 field_name: "from_id",
                 offset: std::mem::offset_of!(Transaction, from_id),
@@ -172,15 +189,19 @@ mod test {
                     is_primary: false,
                     is_unique: false,
                     is_auto_increment: false,
-                    reference: Some(UserInfo::column_id()),
+                    is_not_null: true,
+                    reference: Some(Reference {
+                        table: UserInfo::table_info(),
+                        column: UserInfo::column_id(),
+                    }),
                 },
-            };
+            });
+
             &COLUMN
         }
 
-        pub const fn column_to_id() -> &'static SqlColumnInfo {
-            static COLUMN: SqlColumnInfo = SqlColumnInfo {
-                table: Transaction::const_table_info(),
+        pub fn column_to_id() -> &'static SqlColumnInfo {
+            static COLUMN: LazyLock<SqlColumnInfo> = LazyLock::new(|| SqlColumnInfo {
                 column_name: "to_id",
                 field_name: "to_id",
                 offset: std::mem::offset_of!(Transaction, to_id),
@@ -190,9 +211,13 @@ mod test {
                     is_primary: false,
                     is_unique: false,
                     is_auto_increment: false,
-                    reference: Some(UserInfo::column_id()),
+                    is_not_null: true,
+                    reference: Some(Reference {
+                        table: UserInfo::table_info(),
+                        column: UserInfo::column_id(),
+                    }),
                 },
-            };
+            });
             &COLUMN
         }
     }
@@ -205,16 +230,18 @@ mod test {
             Self::const_table_info()
         }
 
-        fn value_ref<T: 'static>(&self, column: &Column<Self::ExtraTableInfo, Self::ExtraColumnInfo>) -> Option<&T> {
+        fn value_ref<T: 'static>(&self, column: &Column<Self::ExtraColumnInfo>) -> Option<&T> {
             let _ = column;
             todo!()
         }
 
-        fn value_mut<T: 'static>(&mut self, column: &Column<Self::ExtraTableInfo, Self::ExtraColumnInfo>) -> Option<&mut T> {
+        fn value_mut<T: 'static>(
+            &mut self,
+            column: &Column<Self::ExtraColumnInfo>,
+        ) -> Option<&mut T> {
             let _ = column;
             todo!()
         }
-        
     }
 
     #[test]
@@ -242,7 +269,15 @@ mod test {
 
         assert_eq!(user.age, 40);
 
-        let from_id_column = Transaction::column_from_id().extra.reference.unwrap();
-        assert_eq!(from_id_column as *const _, UserInfo::column_id() as *const _);
+        let from_id_column = Transaction::column_from_id()
+            .extra
+            .reference
+            .as_ref()
+            .unwrap()
+            .column;
+        assert_eq!(
+            from_id_column as *const _,
+            UserInfo::column_id() as *const _
+        );
     }
 }

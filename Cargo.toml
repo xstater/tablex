@@ -3,6 +3,8 @@ resolver = "3"
 members = [
     "tablex",
     "tablex-rusqlite",
-    "tablex-rusqlite-derive",
+    "tablex-rusqlite-table-derive",
+    "tablex-rusqlite-params-derive",
+    "tablex-rusqlite-from-row-derive",
     "tablex-rusqlite-test"
 ]
