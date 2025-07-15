@@ -11,6 +11,9 @@ pub use insert_row::*;
 mod select_rows;
 pub use select_rows::*;
 
+mod returning_row;
+pub use returning_row::*;
+
 use crate::SqlTable;
 
 pub fn create_table<T>() -> CreateTableBuilder<T>

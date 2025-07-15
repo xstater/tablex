@@ -28,6 +28,8 @@ pub use builder::*;
 mod executor;
 pub use executor::*;
 
+mod exts;
+pub use exts::*;
 
 pub enum Conflict {
     Rollback,

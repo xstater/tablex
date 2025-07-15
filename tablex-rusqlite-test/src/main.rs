@@ -1,5 +1,5 @@
 use tablex_rusqlite::{
-    Builder, Executor, FromRow, Params, Table,
+    Builder, ConnectionExt, Executor, FromRow, Params, Table,
     sql::{self},
     tablex::Table,
 };
@@ -73,19 +73,22 @@ fn main() {
     println!("Insert row SQL 1: {}", insert_user_info_1.sql());
     insert_user_info_1.execute().unwrap();
 
+    let user_info2 = UserInfo {
+        id: 0,
+        name: "Bob".to_string(),
+        age: 59,
+        address: Some("sb".to_string()),
+    };
     let mut insert_user_info_2 = insert_user_info
-        .build(
-            &connection,
-            &UserInfo {
-                id: 0,
-                name: "Bob".to_string(),
-                age: 59,
-                address: Some("sb".to_string()),
-            },
-        )
+        .returning_row()
+        .build(&connection, &user_info2)
         .unwrap();
-    println!("Insert row SQL 2: {}", insert_user_info_2.sql());
-    insert_user_info_2.execute().unwrap();
+    println!(
+        "Insert row SQL 2 And Returning row: {}",
+        insert_user_info_2.sql()
+    );
+    let returned_user_info = insert_user_info_2.execute().unwrap();
+    println!("Returned user info: {:?}", returned_user_info);
 
     let mut select_rows = sql::select_rows::<UserInfo>()
         .filter_raw("age > 40")
@@ -94,4 +97,9 @@ fn main() {
     println!("Select rows SQL: {}", select_rows.sql());
     let user_infos = select_rows.execute().unwrap();
     println!("Selected user infos: {:?}", user_infos);
+
+    let results = connection
+        .query_raw::<_, (u32, String)>("SELECT id, user_name FROM user_info WHERE user_name='Bob'", &())
+        .unwrap();
+    println!("{:?}", results)
 }

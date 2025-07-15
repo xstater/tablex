@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{bind_params, Builder, Conflict, Executor, Params, SqlTable};
+use crate::{Builder, Conflict, Executor, Params, SqlTable, bind_params, sql::ReturningRowBuilder};
 
 pub struct InsertRowBuilder<Table> {
     conflict: Option<Conflict>,
@@ -34,13 +34,17 @@ where
         self.with_auto_increment = true;
         self
     }
+
+    pub fn returning_row(self) -> ReturningRowBuilder<Table> {
+        ReturningRowBuilder::new(self)
+    }
 }
 
 impl<T> InsertRowBuilder<T>
 where
     T: SqlTable,
 {
-    fn build_sql(&self) -> String {
+    pub(crate) fn build_sql(&self) -> String {
         let table_info = T::table_info();
         let table_name = table_info.table_name;
 
@@ -86,6 +90,38 @@ where
             placeholders.join(", ")
         )
     }
+
+
+    pub(crate) fn bind_insert_params<Table>(
+        &self,
+        stmt: &mut rusqlite::Statement<'_>,
+        params: &Table,
+    ) -> rusqlite::Result<()>
+    where
+        Table: Params<BindIndex = &'static str>,
+    {
+        // 开启自增时，不需要发送自增的列
+        if self.with_auto_increment {
+            let table_info = T::table_info();
+            let auto_increment_columns: Vec<_> = table_info
+                .columns
+                .iter()
+                .filter(|column| column.extra.is_auto_increment)
+                .collect();
+            let params = params.params().filter(|(index, _)| {
+                // 只发送非自增列
+                !auto_increment_columns
+                    .iter()
+                    // 这里要去掉一个`:`
+                    .any(|column| column.field_name == (&index[1..]))
+            });
+            bind_params(params, stmt)?;
+        } else {
+            bind_params(params.params(), stmt)?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<T> Builder<T> for InsertRowBuilder<T>
@@ -103,27 +139,7 @@ where
 
         let mut stmt = connection.prepare(&sql)?;
 
-        // 开启自增时，不需要发送自增的列
-        if self.with_auto_increment {
-            let table_info = T::table_info();
-            let auto_increment_columns: Vec<_> = table_info
-                .columns
-                .iter()
-                .filter(|column| column.extra.is_auto_increment)
-                .collect();
-            let params = params
-                .params()
-                .filter(|(index, _)| {
-                    // 只发送非自增列
-                    !auto_increment_columns
-                        .iter()
-                        // 这里要去掉一个`:`
-                        .any(|column| column.field_name == (&index[1..]))
-                });
-            bind_params(params, &mut stmt)?;
-        } else {
-            bind_params(params.params(), &mut stmt)?;
-        }
+        self.bind_insert_params(&mut stmt, params)?;
 
         Ok(InsertRowExecutor {
             stmt,
