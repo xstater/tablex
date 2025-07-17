@@ -8,4 +8,5 @@ tablex = { path = "../tablex" }
 tablex-rusqlite-table-derive = { path = "../tablex-rusqlite-table-derive" }
 tablex-rusqlite-params-derive = { path = "../tablex-rusqlite-params-derive" }
 tablex-rusqlite-from-row-derive = { path = "../tablex-rusqlite-from-row-derive" }
-rusqlite = "0.37"
+rusqlite = { version = "0.37", features = ["uuid"] }
+uuid = "1.17.0"

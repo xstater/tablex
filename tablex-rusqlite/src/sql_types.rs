@@ -1,6 +1,7 @@
 use std::num::*;
 
 use rusqlite::ToSql;
+use uuid::Uuid;
 
 /// Sql type Info 
 pub trait SqlType : ToSql {
@@ -58,3 +59,4 @@ impl_sql_type!(f64, "REAL");
 
 impl_sql_type!(String, "TEXT");
 
+impl_sql_type!(Uuid, "INTEGER");
