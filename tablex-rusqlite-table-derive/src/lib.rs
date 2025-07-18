@@ -238,7 +238,7 @@ fn gen_column_def_fns(struct_ident: &Ident, column_fields: &[ColumnInfo]) -> Vec
                     let column_fn_name = build_column_fn_name(key.to_string());
                     quote!{
                         Some(::tablex_rusqlite::meta::Reference{
-                            table: #table_type :: table_info(),
+                            table: < #table_type as ::tablex_rusqlite::tablex::Table > :: table_info(),
                             column: #table_type :: #column_fn_name()
                         })
                     }
