@@ -59,4 +59,4 @@ impl_sql_type!(f64, "REAL");
 
 impl_sql_type!(String, "TEXT");
 
-impl_sql_type!(Uuid, "INTEGER");
+impl_sql_type!(Uuid, "BLOB");
